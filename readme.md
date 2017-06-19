@@ -16,7 +16,12 @@ cv: 0.5323 - same but with size_by_cat with LGBR
 cv: 0.5332 - added one hot encoding of cat labels with LGBR (best CV?, 0.55511)
 cv: 0.2072 - same but with XGB parameters from the script
 cv: 0.6123 - 0.5332 with np.log1p(y) and LGBR (best CV, LB 0.55387)
-
+cv: 0.6089 - same as above but with RF (max_depth=3, n_estimators=700)
+cv: 0.6176 - LGBM with X0_group and all statistics (kfold=5)
+cv: 0.6111 - KFold for cat_statistic switched to 8
+cv: 0.6138 - KFold = 3
+cv: 0.6175 - KMeans (20 or 100 clusters) on binary features - didn't work
+cv: 0.6133 - added median by categorical
 
 ### Ideas:
 - Mean of y across binary - encoding?
