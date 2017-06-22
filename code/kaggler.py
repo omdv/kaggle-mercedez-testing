@@ -47,69 +47,76 @@ class BlendingClassifier():
         return self.__predict_one_fold(Xts)
 
 
-class BlendingRegressor():
-    def __init__(self, rgrs=None, folds=5, verbose=0, scoring=r2_score):
-        self.rgrs = rgrs
-        self.kfold = KFold(folds)
+class BlendingRegressorTransformer():
+    def __init__(self, base_models=None, n_splits=5,
+                 verbose=0, scoring=r2_score):
+        self.base_models = [[m for m in base_models] for s in n_splits]
+        self.n_splits = n_splits
+        self.folds = None
         self.verbose = verbose
         self.hash = None
         self.target = None
-        self.fitFullTrain = False
+        self.isTrainFit = False
         self.scoring = scoring
 
     def fit_one_fold_(self, X, y):
-        for rgr in self.rgrs:
+        for rgr in self.base_models:
             rgr.fit(X, y)
 
     def predict_one_fold_(self, X):
-        res = np.ones((X.shape[0], 1)) * (-1)
-        for rgr in self.rgrs:
+        res = np.zeros((X.shape[0], 1))
+        for rgr in self.base_models:
             res = np.column_stack((res, rgr.predict(X)))
         return np.array(res[:, 1:])
 
-    def fit_transform_train_(self, X, y):
-        res = np.ones((X.shape[0], len(self.rgrs))) * (-1)
-        X_train = X
-        fold = 0
-        # k-fold for training set
-        for (tr_idx, cv_idx) in self.kfold.split(X_train, y):
-            X_tr, y_tr = X_train[tr_idx], y[tr_idx]
-            X_cv, y_cv = X_train[cv_idx], y[cv_idx]
-            self.fit_one_fold_(X_tr, y_tr)
-            res[cv_idx, :] = self.predict_one_fold_(X_cv)
-            if self.verbose > 0:
-                print("Fold {:1d} CV results:".format(fold))
-                fold += 1
-                # TODO - add different metrics
-                for (idx, rgr) in enumerate(self.rgrs):
-                    print(
-                        "rgr {:2d}: {:06.4f}".
-                        format(idx, r2_score(y_cv, rgr.predict(X_cv))))
-        return res
-
-    def fit_transform_test_(self, Xtr, ytr, Xts):
-        self.fit_one_fold_(Xtr, ytr)
-        return self.predict_one_fold_(Xts)
-
     def fit(self, X, y):
         self.hash = hash(X.data.tobytes())
-        self.target = y
-        self.fit_one_fold_(X, y)
-        self.fitFullTrain = True
+        self.isTrainFit = True
+        self.folds = list(KFold(n_splits=self.n_splits).split(X, y))
+
+        for i, rgr in enumerate(self.base_models):
+            for j, (train_idx, test_idx) in enumerate(self.folds):
+                X_train = X[train_idx]
+                y_train = y[train_idx]
+                X_holdout = X[test_idx]
+                y_holdout = y[test_idx]
+
+                self.base_models[i, j].fit(X_train, y_train)
+                y_pred = self.base_models[i, j].predict(X_holdout)[:]
+
+                print ("Model %d fold %d score %f" %
+                       (i, j, r2_score(y_holdout, y_pred)))
+        return self
+
+    def transform_train_(self, X):
+        X_result = np.zeros((X.shape[0], len(self.base_models)))
+        for i, rgr in enumerate(self.base_models):
+            for j, (train_idx, test_idx) in enumerate(self.folds):
+                X_holdout = X[test_idx]
+                y_pred = self.base_models[i, j].predict(X_holdout)[:]
+                X_result[test_idx, i] = y_pred
+        return X_result
+
+    def transform_test_(self, X):
+        X_result = np.zeros((X.shape[0], len(self.base_models)))
+        for i, rgr in enumerate(self.base_models):
+            X_result_i = np.zeros((X.shape[0], self.n_splits))
+            for j, (train_idx, test_idx) in enumerate(self.folds):
+                X_result_i[:, j] = self.base_models[i, j].predict(X)[:]
+            X_result[:, i] = X_result_i.mean(axis=1)
+        return X_result
 
     def transform(self, X):
         if hash(X.data.tobytes()) == self.hash:
-            return self.fit_transform_train_(X, self.target)
+            return self.transform_train_(X)
         else:
-            return self.predict_one_fold_(X)
+            return self.transform_test_(X)
 
     def fit_transform(self, X, y):
         self.hash = hash(X.data.tobytes())
-        self.target = y
-        out = self.fit_transform_train_(X, y)
-        self.fit_one_fold_(X, y)
-        self.fitFullTrain = True
-        return out
+        self.fit(X, y)
+        self.isTrainFit = True
+        return self.transform_train_(X, y)
 
 
 class PipeExtractor(BaseEstimator, TransformerMixin):
