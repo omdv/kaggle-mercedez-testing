@@ -30,7 +30,11 @@ R^2 Score: 0.6205 (+/- 0.041) - lgbr and rfr, lasso as 2nd level (best CV)
 R^2 Score: 0.6163 (+/- 0.040) - same as above but with cv=8
 R^2 Score: 0.5615 (+/- 0.092) - best pipe with rfr (max_depth=3, n_estimators=700)
 R^2 Score: 0.6230 (+/- 0.041) - lgbr, rfr, xgbr and lasso as 2nd level, 5 folds (best CV)
-R^2 Score: 0.5962 (+/- 0.045) - elastic net
+R^2 Score: 0.5962 (+/- 0.045) - added elastic net
+R^2 Score: 0.5906 (+/- 0.068) - lgbr, rfr and rfr (depth=300, est=100) as 2nd level
+R^2 Score: 0.6239 (+/- 0.041) - lgbr, rgr and xgbr, lassoCV as 2nd level, no fastICA
+R^2 Score: 0.6240 (+/- 0.041) - same but separate pipelines
+R^2 Score: 0.6242 (+/- 0.042) - added NMF
 
 ### Ideas:
 - Mean of y across binary - encoding?
@@ -39,7 +43,7 @@ R^2 Score: 0.5962 (+/- 0.045) - elastic net
 ### Screening regressors (5 or 10 folds)
 R^2 Score: 0.6192 (+/- 0.040) [<class 'xgboost.sklearn.XGBRegressor'>]
 R^2 Score: 0.6176 (+/- 0.041) [<class 'lightgbm.sklearn.LGBMRegressor'>]
-R^2 Score: 0.5765 (+/- 0.047) [<class 'sklearn.linear_model.coordinate_descent.ElasticNet'>]
+R^2 Score: 0.5962 (+/- 0.045) [<class 'sklearn.linear_model.coordinate_descent.ElasticNet'>]
 R^2 Score: 0.0339 (+/- 0.010) [<class 'sklearn.neighbors.regression.KNeighborsRegressor'>]
 R^2 Score: -9.0570 (+/- 11.617) [<class 'sklearn.linear_model.huber.HuberRegressor'>]
 R^2 Score: -11.0515 (+/- 18.835) [<class 'sklearn.linear_model.ridge.Ridge'>]

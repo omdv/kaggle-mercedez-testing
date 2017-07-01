@@ -5,24 +5,24 @@ from datetime import datetime
 from pickle import dump
 from xgboost import XGBRegressor, DMatrix, train
 from lightgbm import LGBMRegressor
-from sklearn.model_selection import cross_val_score
 from sklearn.preprocessing import LabelEncoder, OneHotEncoder, RobustScaler
 from sklearn.metrics import r2_score
 from sklearn.model_selection import GridSearchCV
+from sklearn.model_selection import KFold
+from sklearn.model_selection import cross_val_score
 from sklearn.random_projection import GaussianRandomProjection
 from sklearn.random_projection import SparseRandomProjection
-from sklearn.decomposition import PCA, FastICA, TruncatedSVD
+from sklearn.decomposition import PCA, FastICA, TruncatedSVD, NMF
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.ensemble import BaggingRegressor
 from sklearn.ensemble import ExtraTreesRegressor
 from sklearn.neighbors import KNeighborsRegressor
-from sklearn.linear_model import Ridge
 from sklearn.neural_network import MLPRegressor
 from sklearn.linear_model import ElasticNetCV, ElasticNet
-from sklearn.linear_model import LassoLars, HuberRegressor
-from sklearn.model_selection import KFold
-from sklearn.pipeline import Pipeline, FeatureUnion
+from sklearn.linear_model import LassoLars, HuberRegressor, LassoLarsCV
+from sklearn.linear_model import Ridge, LinearRegression
+from sklearn.pipeline import Pipeline, FeatureUnion, make_pipeline
 from sklearn.base import BaseEstimator, RegressorMixin
 from sklearn.cluster import KMeans
 from mlxtend.feature_selection import SequentialFeatureSelector as SFS
@@ -288,7 +288,7 @@ cat_features = ['X0_group'] + cat_features
 joint.loc[:, cat_features] =\
     joint[cat_features].apply(LabelEncoder().fit_transform)
 
-# drop outlier and choose target feature
+# scale the target feature
 y_train = np.log1p(train_df['y'].values)
 y_mean = np.mean(y_train)
 
@@ -359,7 +359,7 @@ test_df.fillna(-999, inplace=True)
 
 # =========================================================
 # Define stacking regressors
-rfr = RandomForestRegressor(max_depth=3, n_estimators=700, n_jobs=-1)
+rfr = RandomForestRegressor(max_depth=3, n_estimators=700, n_jobs=4)
 gbr = GradientBoostingRegressor(
     learning_rate=0.01,
     max_depth=3, n_estimators=300)
@@ -374,17 +374,18 @@ mlpr = MLPRegressor(
     hidden_layer_sizes=(150, 150, 25), max_iter=1000, random_state=42,
     verbose=True, tol=0.01)
 lasso = LassoLars()
+lassoCV = LassoLarsCV()
 hr = HuberRegressor(max_iter=1000)
 lgbr = LGBMRegressor(
     max_depth=2, n_estimators=1050, learning_rate=0.0045, subsample=0.9,
-    nthread=-1)
+    nthread=4)
 enetCV = ElasticNetCV(max_iter=4000, n_jobs=-1, selection="random")
 enet = ElasticNet(alpha=0.03, l1_ratio=0.15)
 knnr = KNeighborsRegressor(n_neighbors=200, weights='uniform', n_jobs=-1)
 svr = SVR(kernel='rbf', C=1.0, epsilon=0.05)
 
 # Define feature transformation pipeline
-pipe = Pipeline([
+pipe1 = Pipeline([
     ('features', FeatureUnion([
         ('categorical', Pipeline([
             ('get', PipeExtractor(cat_features)),
@@ -410,10 +411,10 @@ pipe = Pipeline([
             ('get', PipeExtractor(all_features)),
             ('fit', PCA(n_components=12, random_state=42))
         ])),
-        ('fastica', Pipeline([
-            ('get', PipeExtractor(all_features, )),
-            ('fit', FastICA(n_components=12, random_state=42, max_iter=400))
-        ])),
+        # ('fastica', Pipeline([
+        #     ('get', PipeExtractor(all_features)),
+        #     ('fit', FastICA(n_components=12, random_state=42, max_iter=600))
+        # ])),
         ('gauss', Pipeline([
             ('get', PipeExtractor(all_features)),
             ('fit', GaussianRandomProjection(
@@ -424,65 +425,50 @@ pipe = Pipeline([
             ('fit', SparseRandomProjection(
                 n_components=12, dense_output=True, random_state=42))
         ])),
+        ('nmf', Pipeline([
+            ('get', PipeExtractor(all_features)),
+            ('fit', NMF(n_components=12, init='nndsvdar', random_state=42))
+        ])),
     ])),
-    # ('scaler', RobustScaler()),
     # ('blender', StackerTransformer(
     #     base_models=[lgbr, rfr, xgbr, enet], verbose=1)),
-    # ('rgr', lasso)
-    # ('rgr', enet)
-    ('rgr', StackingCVRegressor(
-        regressors=(lgbr, rfr, xgbr, enet),
-        meta_regressor=lasso, cv=5))
+    # ('rgr', StackingCVRegressor(
+    #     regressors=[lgbr, rfr, xgbr],
+    #     meta_regressor=lassoCV, cv=5))
     # ('rgr', GroupedRegressor(
     #     rgr=LassoLarsCV(normalize=True)))
     # ('rgr', EnsembleRegressor(rgrs=[lgbr, rfr], weights=[.5, .5]))
 ])
 
-# x_train = pipe.fit_transform(train_df, y_train)
-# x_test = pipe.transform(test_df)
+mode = 'Submit'
 
-# blender = StackerTransformer(base_models=[lgbr, enet])
-# Xn = blender.fit_transform(X, y_train)
+p1 = make_pipeline(pipe1, lgbr)
+p2 = make_pipeline(pipe1, rfr)
+p3 = make_pipeline(pipe1, xgbr)
 
-
-# x_train = pipe.fit_transform(train_df, y_train)
-# rgr = GroupedRegressor(LGBMRegressor())
-# kfold = KFold(5)
-# for (tr_idx, cv_idx) in kfold.split(x_train):
-#     rgr.fit(x_train[tr_idx, :], y_train[tr_idx])
-#     print(r2_score(y_train[cv_idx], rgr.predict(x_train[cv_idx, :])))
-
-# fpipe1.fit(train_df, y_train)
-# kk = fpipe1.predict(test_df)
-
-mode = 'Val'
+pipe = StackingCVRegressor(
+    regressors=[p1, p2, p3],
+    meta_regressor=lassoCV, cv=5)
 
 if mode == 'Val':
     cv = cross_val_score(pipe, train_df, y_train, cv=5)
 
     print("R^2 Score: %0.4f (+/- %0.3f) [%s]" % (
-        cv.mean(), cv.std(), pipe.named_steps['rgr'].__class__))
+        cv.mean(), cv.std(), pipe.__class__))
 
 elif mode == 'Grid':
-    x_train = pipe.fit_transform(train_df, y_train)
-
-    # params = {
-    #     'meta-lgbmregressor__max_depth': [2, 3, 4],
-    #     'meta-lgbmregressor__learning_rate': [0.005, 0.01, 0.03],
-    #     'meta-lgbmregressor__n_estimators': [100, 300, 500]
-    # }
 
     params = {
-        'alpha': [0.9, 1, 3, 5, 10, 20],
-        # 'max_iter': [1, 3, 5, 7, 10, 12, 14, 16, 18]
+        'rgr__meta-randomforestregressor__max_depth': [3, 5, 7, 9],
+        'rgr__meta-randomforestregressor__n_estimators': [100, 300, 500, 700]
     }
 
     grid = GridSearchCV(
-        ridge,
+        pipe,
         param_grid=params,
-        n_jobs=1, verbose=2, scoring='r2', cv=5)
+        n_jobs=4, verbose=2, scoring='r2', cv=5)
 
-    grid.fit(x_train, y_train)
+    grid.fit(train_df, y_train)
 
 elif mode == 'Stacking':
     # x_train, x_valid, y_train, y_valid =\
@@ -517,4 +503,10 @@ elif mode == 'Submit':
     preds['ID'] = test_df['ID']
     preds['y'] = np.expm1(predictions)
 
-    create_submission(0.6230, preds, None)
+    if True:
+        preds = preds.set_index("ID")
+        lb = pd.read_csv("../input/public_lb.csv")
+        preds.loc[lb.ID.values, "y"] = lb["y"].values
+        preds.reset_index(inplace=True)
+
+    create_submission(0.6242, preds, None)
