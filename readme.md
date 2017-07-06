@@ -35,6 +35,21 @@ R^2 Score: 0.5906 (+/- 0.068) - lgbr, rfr and rfr (depth=300, est=100) as 2nd le
 R^2 Score: 0.6239 (+/- 0.041) - lgbr, rgr and xgbr, lassoCV as 2nd level, no fastICA
 R^2 Score: 0.6240 (+/- 0.041) - same but separate pipelines
 R^2 Score: 0.6242 (+/- 0.042) - added NMF
+R^2 Score: 0.6238 (+/- 0.040) - added 33 public LB in training set
+R^2 Score: 0.6215 (+/- 0.038) - added mean of X0 and X314 (REMOVE)
+R^2 Score: 0.6247 (+/- 0.042) - added more public_LB from forum (37 points)
+R^2 Score: 0.6217 (+/- 0.047) - p4 val score
+R^2 Score: 0.6146 (+/- 0.042) - p5 val
+R^2 Score: 0.6232 (+/- 0.043) - p6 with lgbr
+R^2 Score: 0.6212 (+/- 0.041) - p7
+R^2 Score: 0.6270 (+/- 0.043) - p8 = p1, p2, p3, p4, p5 and p7 with LassoCV (best CV)
+R^2 Score: 0.6238 (+/- 0.042) - added p6 to stackedCV (REMOVE)
+R^2 Score: 0.6243 (+/- 0.042) - p9 = average of p1-p7
+R^2 Score: 0.6243 (+/- 0.042) - average of p8 and p9 (REMOVE)
+R^2 Score: 0.6244 (+/- 0.041) - p8 with 39 of public LB (new benchmark)
+R^2 Score: 0.6265 (+/- 0.043) - p8 with 42 of public LB (new benchmark)
+R^2 Score: 0.6247 (+/- 0.043) - p8 with 47 leaks (two are tainted?)
+R^2 Score: 0.6257 (+/- 0.042) - p8 with 47 leaks (fixed ID 105)
 
 ### Ideas:
 - Mean of y across binary - encoding?
@@ -48,6 +63,33 @@ R^2 Score: 0.0339 (+/- 0.010) [<class 'sklearn.neighbors.regression.KNeighborsRe
 R^2 Score: -9.0570 (+/- 11.617) [<class 'sklearn.linear_model.huber.HuberRegressor'>]
 R^2 Score: -11.0515 (+/- 18.835) [<class 'sklearn.linear_model.ridge.Ridge'>]
 R^2 Score: -11923.5885 (+/- 21770.111) [<class 'sklearn.neural_network.multilayer_perceptron.MLPRegressor'>]
+
+
+### Probing
+(140726.14692 * (-59.19107 + 59.28220) + 10000.) / 200
+105 or 110 is tainted
+21 - OUT
+77 - IN
+84 - OUT
+117 - IN
+120 - IN
+123 - OUT
+126 - OUT
+132 - OUT
+135 - OUT
+137 - OUT
+251 - OUT
+343 - OUT
+345 - IN
+346 - OUT
+347 - OUT
+1441 - OUT
+2128 - OUT
+2132 - OUT
+2135 - IN
+2909 - OUT
+3617 - OUT
+
 
 ## List of pipelines with models
 ### Pipe 1

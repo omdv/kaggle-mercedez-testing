@@ -23,7 +23,7 @@ from sklearn.linear_model import ElasticNetCV, ElasticNet
 from sklearn.linear_model import LassoLars, HuberRegressor, LassoLarsCV
 from sklearn.linear_model import Ridge, LinearRegression
 from sklearn.pipeline import Pipeline, FeatureUnion, make_pipeline
-from sklearn.base import BaseEstimator, RegressorMixin
+from sklearn.base import BaseEstimator, RegressorMixin, TransformerMixin, clone
 from sklearn.cluster import KMeans
 from mlxtend.feature_selection import SequentialFeatureSelector as SFS
 from mlxtend.regressor import StackingCVRegressor
@@ -31,6 +31,19 @@ from sklearn.svm import SVR
 
 
 np.random.seed(42)
+
+
+class AddColumns(BaseEstimator, TransformerMixin):
+    def __init__(self, transform_=None):
+        self.transform_ = transform_
+
+    def fit(self, X, y=None):
+        self.transform_.fit(X, y)
+        return self
+
+    def transform(self, X, y=None):
+        xform_data = self.transform_.transform(X, y)
+        return np.append(X, xform_data, axis=1)
 
 
 class StackerTransformer():
@@ -156,6 +169,24 @@ class Ensemble(object):
         return res
 
 
+class AveragingRegressor(BaseEstimator, RegressorMixin, TransformerMixin):
+    def __init__(self, regressors):
+        self.regressors = regressors
+
+    def fit(self, X, y):
+        self.regr_ = [clone(x) for x in self.regressors]
+        for regr in self.regr_:
+            regr.fit(X, y)
+
+        return self
+
+    def predict(self, X):
+        predictions = np.column_stack([
+            regr.predict(X) for regr in self.regr_
+        ])
+        return np.mean(predictions, axis=1)
+
+
 class EnsembleRegressor(BaseEstimator, RegressorMixin):
     def __init__(self, rgrs=None, weights=None):
         self.rgrs = rgrs
@@ -272,7 +303,16 @@ def create_submission(score, pred, model):
 train_df = pd.read_csv('../input/train.csv')
 test_df = pd.read_csv('../input/test.csv')
 
-# train_df.loc[883, 'y'] = 169.91
+# Mix in the public LB
+if True:
+    test_df = test_df.set_index("ID")
+    public_lb = pd.read_csv('../input/public_lb.csv')
+    add_test = test_df.loc[public_lb.ID.values, :]
+    add_test.loc[:, "y"] = public_lb["y"].values
+    add_test.reset_index(inplace=True)
+    train_df = pd.concat([train_df, add_test], axis=0).reset_index()
+    test_df.reset_index(inplace=True)
+
 joint = pd.concat([train_df, test_df], axis=0)
 
 # define feature sets
@@ -317,6 +357,7 @@ for col in cat_features:
     means.columns = [col, col_name]
     test_df = pd.merge(test_df, means, how='left', on=col)
     std_features.append(col_name)
+# all_features += std_features
 
 # Group size by categorical
 size_features = []
@@ -335,6 +376,7 @@ for col in cat_features:
     means.columns = [col, col_name]
     test_df = pd.merge(test_df, means, how='left', on=col)
     size_features.append(col_name)
+# all_features += size_features
 
 # Median by categorical
 median_features = []
@@ -354,29 +396,55 @@ for col in cat_features:
     test_df = pd.merge(test_df, means, how='left', on=col)
     median_features.append(col_name)
 
+# Mean by categorical
+mean_features = []
+for col in ["X0", "X314"]:
+    col_name = 'mean_by_' + col
+    train_df.iscopy = False
+    for (tr_idx, cv_idx) in kfold.split(train_df.index):
+        x_tr = train_df.loc[tr_idx, [col, 'y']]
+        x_cv = train_df.loc[cv_idx, [col, 'y']]
+        means = x_tr[[col, 'y']].groupby(col).mean().reset_index()
+        means.columns = [col, col_name]
+        x_cv = pd.merge(x_cv, means, how='left', on=col)
+        train_df.loc[cv_idx, col_name] = x_cv[col_name].values
+    # test
+    means = train_df[[col, 'y']].groupby(col).mean().reset_index()
+    means.columns = [col, col_name]
+    test_df = pd.merge(test_df, means, how='left', on=col)
+    mean_features.append(col_name)
+
 train_df.fillna(-999, inplace=True)
 test_df.fillna(-999, inplace=True)
 
 # =========================================================
 # Define stacking regressors
-rfr = RandomForestRegressor(max_depth=3, n_estimators=700, n_jobs=4)
+rfr1 = RandomForestRegressor(max_depth=3, n_estimators=700, n_jobs=4)
+rfr2 = RandomForestRegressor(n_estimators=250, n_jobs=4, min_samples_split=25,
+                             min_samples_leaf=25, max_depth=3)
 gbr = GradientBoostingRegressor(
     learning_rate=0.01,
     max_depth=3, n_estimators=300)
 clf3 = BaggingRegressor()
 clf4 = ExtraTreesRegressor()
 ridge = Ridge()
-xgbr = XGBRegressor(
+xgbr1 = XGBRegressor(
     n_estimators=500,
     max_depth=1, learning_rate=0.02,
     nthread=-1, objective='reg:linear')
+xgbr2 = XGBRegressor(
+    max_depth=4, learning_rate=0.005, subsample=0.921,
+    objective='reg:linear', n_estimators=1300, base_score=y_mean)
 mlpr = MLPRegressor(
     hidden_layer_sizes=(150, 150, 25), max_iter=1000, random_state=42,
     verbose=True, tol=0.01)
 lasso = LassoLars()
 lassoCV = LassoLarsCV()
 hr = HuberRegressor(max_iter=1000)
-lgbr = LGBMRegressor(
+lgbr1 = LGBMRegressor(
+    max_depth=2, n_estimators=1050, learning_rate=0.0045, subsample=0.9,
+    nthread=4)
+lgbr2 = LGBMRegressor(
     max_depth=2, n_estimators=1050, learning_rate=0.0045, subsample=0.9,
     nthread=4)
 enetCV = ElasticNetCV(max_iter=4000, n_jobs=-1, selection="random")
@@ -403,6 +471,9 @@ pipe1 = Pipeline([
         ('sizes', Pipeline([
             ('get', PipeExtractor(size_features)),
         ])),
+        # ('mean', Pipeline([
+        #     ('get', PipeExtractor(mean_features)),
+        # ])),
         ('tsvd', Pipeline([
             ('get', PipeExtractor(all_features)),
             ('fit', TruncatedSVD(n_components=12, random_state=42))
@@ -430,25 +501,50 @@ pipe1 = Pipeline([
             ('fit', NMF(n_components=12, init='nndsvdar', random_state=42))
         ])),
     ])),
-    # ('blender', StackerTransformer(
-    #     base_models=[lgbr, rfr, xgbr, enet], verbose=1)),
-    # ('rgr', StackingCVRegressor(
-    #     regressors=[lgbr, rfr, xgbr],
-    #     meta_regressor=lassoCV, cv=5))
-    # ('rgr', GroupedRegressor(
-    #     rgr=LassoLarsCV(normalize=True)))
-    # ('rgr', EnsembleRegressor(rgrs=[lgbr, rfr], weights=[.5, .5]))
 ])
 
-mode = 'Submit'
+p1 = make_pipeline(pipe1, lgbr1)
+p2 = make_pipeline(pipe1, rfr1)
+p3 = make_pipeline(pipe1, xgbr1)
 
-p1 = make_pipeline(pipe1, lgbr)
-p2 = make_pipeline(pipe1, rfr)
-p3 = make_pipeline(pipe1, xgbr)
+# Define feature transformation pipeline
+pipe2 = Pipeline([
+    ('features', FeatureUnion([
+        ('categorical', Pipeline([
+            ('get', PipeExtractor(cat_features)),
+        ])),
+        ('cat_encoded', Pipeline([
+            ('get', PipeExtractor(cat_features)),
+            ('enc', OneHotEncoder(sparse=False, handle_unknown='ignore'))
+        ])),
+        ('integer', Pipeline([
+            ('get', PipeExtractor(bin_features)),
+        ]))
+    ])),
+])
 
-pipe = StackingCVRegressor(
-    regressors=[p1, p2, p3],
+p4 = make_pipeline(
+    pipe2, RobustScaler(), PCA(), SVR(kernel='rbf', C=1.0, epsilon=0.05))
+
+p5 = make_pipeline(
+    pipe2, RobustScaler(),
+    PCA(n_components=125), ElasticNet(alpha=0.001, l1_ratio=0.1))
+
+p6 = make_pipeline(pipe2, lgbr2)
+
+p7 = make_pipeline(pipe2, rfr2)
+
+p8 = StackingCVRegressor(
+    regressors=[p1, p2, p3, p4, p5, p7],
     meta_regressor=lassoCV, cv=5)
+
+p9 = AveragingRegressor((p1, p2, p3, p4, p5, p6, p7))
+
+pipe = AveragingRegressor((p8, p9))
+
+pipe = p8
+
+mode = 'Submit'
 
 if mode == 'Val':
     cv = cross_val_score(pipe, train_df, y_train, cv=5)
@@ -459,14 +555,15 @@ if mode == 'Val':
 elif mode == 'Grid':
 
     params = {
-        'rgr__meta-randomforestregressor__max_depth': [3, 5, 7, 9],
-        'rgr__meta-randomforestregressor__n_estimators': [100, 300, 500, 700]
+        'lgbmregressor__max_depth': [2, 5, 7],
+        'lgbmregressor__n_estimators': [700, 1000, 1300],
+        # 'learning_rate': [0.004, 0.007, 0.01]
     }
 
     grid = GridSearchCV(
         pipe,
         param_grid=params,
-        n_jobs=4, verbose=2, scoring='r2', cv=5)
+        n_jobs=1, verbose=2, scoring='r2', cv=5)
 
     grid.fit(train_df, y_train)
 
@@ -503,10 +600,11 @@ elif mode == 'Submit':
     preds['ID'] = test_df['ID']
     preds['y'] = np.expm1(predictions)
 
+    # mix-in real test
     if True:
         preds = preds.set_index("ID")
         lb = pd.read_csv("../input/public_lb.csv")
         preds.loc[lb.ID.values, "y"] = lb["y"].values
         preds.reset_index(inplace=True)
 
-    create_submission(0.6242, preds, None)
+    create_submission(0.6257, preds, None)
