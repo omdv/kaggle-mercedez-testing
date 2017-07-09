@@ -233,8 +233,10 @@ def assign_X0_group(val):
     if val in ["d", "ay", "h", "aj", "v", "ao", "aw"]:
         return 2
     if val in ["c", "ax", "x", "j", "w", "i", "ak", "g", "at", "ab", "af",
-               "r", "as", "a", "ap", "au", "aa"]:
+               "r", "as", "a", "ap", "au"]:
             return 3
+    if val in ["aa"]:
+        return 4
 
 
 def runXGB(train_X, train_y, test_X=None, test_y=None, feature_names=None,
@@ -302,6 +304,19 @@ def create_submission(score, pred, model):
 # Main part
 train_df = pd.read_csv('../input/train.csv')
 test_df = pd.read_csv('../input/test.csv')
+original_features = list(train_df.columns[2:])
+
+# Get duplicates and number of clones
+train_df["duplicate"] =\
+    train_df.duplicated(subset=original_features).astype(np.int32)
+test_df["duplicate"] =\
+    test_df.duplicated(subset=original_features).astype(np.int32)
+train_df["n_clones"] =\
+    train_df.groupby(original_features).ID.transform("size").astype(np.int32)
+test_df["n_clones"] =\
+    test_df.groupby(original_features).ID.transform("size").astype(np.int32)
+
+Leak = False
 
 # Mix in the public LB
 if True:
@@ -318,7 +333,7 @@ joint = pd.concat([train_df, test_df], axis=0)
 # define feature sets
 cat_features = list(joint.select_dtypes(include=['object']).columns)
 bin_features = list(joint.select_dtypes(include=[np.int64]).columns)
-all_features = list(joint.select_dtypes(exclude=['float']).columns)
+all_features = list(joint.select_dtypes(exclude=['float', np.int32]).columns)
 
 # get X0 group
 joint['X0_group'] = joint['X0'].apply(assign_X0_group)
@@ -380,7 +395,7 @@ for col in cat_features:
 
 # Median by categorical
 median_features = []
-for col in cat_features:
+for col in ["X0", "X0_group"]:
     col_name = 'median_by_' + col
     train_df.iscopy = False
     for (tr_idx, cv_idx) in kfold.split(train_df.index):
@@ -398,7 +413,7 @@ for col in cat_features:
 
 # Mean by categorical
 mean_features = []
-for col in ["X0", "X314"]:
+for col in ["X0", "X0_group"]:
     col_name = 'mean_by_' + col
     train_df.iscopy = False
     for (tr_idx, cv_idx) in kfold.split(train_df.index):
@@ -445,12 +460,16 @@ lgbr1 = LGBMRegressor(
     max_depth=2, n_estimators=1050, learning_rate=0.0045, subsample=0.9,
     nthread=4)
 lgbr2 = LGBMRegressor(
-    max_depth=2, n_estimators=1050, learning_rate=0.0045, subsample=0.9,
+    max_depth=2, n_estimators=850, learning_rate=0.0035, subsample=0.9,
+    nthread=4)
+lgbr3 = LGBMRegressor(
+    max_depth=2, n_estimators=100, learning_rate=0.003,
     nthread=4)
 enetCV = ElasticNetCV(max_iter=4000, n_jobs=-1, selection="random")
 enet = ElasticNet(alpha=0.03, l1_ratio=0.15)
 knnr = KNeighborsRegressor(n_neighbors=200, weights='uniform', n_jobs=-1)
 svr = SVR(kernel='rbf', C=1.0, epsilon=0.05)
+lr1 = LinearRegression(n_jobs=4)
 
 # Define feature transformation pipeline
 pipe1 = Pipeline([
@@ -471,9 +490,6 @@ pipe1 = Pipeline([
         ('sizes', Pipeline([
             ('get', PipeExtractor(size_features)),
         ])),
-        # ('mean', Pipeline([
-        #     ('get', PipeExtractor(mean_features)),
-        # ])),
         ('tsvd', Pipeline([
             ('get', PipeExtractor(all_features)),
             ('fit', TruncatedSVD(n_components=12, random_state=42))
@@ -482,10 +498,6 @@ pipe1 = Pipeline([
             ('get', PipeExtractor(all_features)),
             ('fit', PCA(n_components=12, random_state=42))
         ])),
-        # ('fastica', Pipeline([
-        #     ('get', PipeExtractor(all_features)),
-        #     ('fit', FastICA(n_components=12, random_state=42, max_iter=600))
-        # ])),
         ('gauss', Pipeline([
             ('get', PipeExtractor(all_features)),
             ('fit', GaussianRandomProjection(
@@ -503,9 +515,9 @@ pipe1 = Pipeline([
     ])),
 ])
 
-p1 = make_pipeline(pipe1, lgbr1)
-p2 = make_pipeline(pipe1, rfr1)
-p3 = make_pipeline(pipe1, xgbr1)
+p11 = make_pipeline(pipe1, lgbr1)
+p12 = make_pipeline(pipe1, rfr1)
+p13 = make_pipeline(pipe1, xgbr1)
 
 # Define feature transformation pipeline
 pipe2 = Pipeline([
@@ -523,24 +535,49 @@ pipe2 = Pipeline([
     ])),
 ])
 
-p4 = make_pipeline(
+p21 = make_pipeline(
     pipe2, RobustScaler(), PCA(), SVR(kernel='rbf', C=1.0, epsilon=0.05))
 
-p5 = make_pipeline(
+p22 = make_pipeline(
     pipe2, RobustScaler(),
     PCA(n_components=125), ElasticNet(alpha=0.001, l1_ratio=0.1))
 
-p6 = make_pipeline(pipe2, lgbr2)
+p23 = make_pipeline(pipe2, rfr2)
 
-p7 = make_pipeline(pipe2, rfr2)
+# Define feature transformation pipeline
+pipe3 = Pipeline([
+    ('features', FeatureUnion([
+        ('cat_encoded', Pipeline([
+            ('get', PipeExtractor(cat_features)),
+            ('enc', OneHotEncoder(sparse=False, handle_unknown='ignore'))
+        ])),
+        ('integer', Pipeline([
+            ('get', PipeExtractor(bin_features)),
+        ])),
+        ('clones', Pipeline([
+            ('get', PipeExtractor(["n_clones"])),
+        ])),
+        ('stds', Pipeline([
+            ('get', PipeExtractor(std_features)),
+        ])),
+        ('sizes', Pipeline([
+            ('get', PipeExtractor(size_features)),
+        ])),
+        ('means', Pipeline([
+            ('get', PipeExtractor(mean_features)),
+        ])),
+        ('medians', Pipeline([
+            ('get', PipeExtractor(median_features)),
+        ])),
+    ])),
+])
+
+p31 = make_pipeline(pipe3, lgbr2)
+p32 = make_pipeline(pipe3, lr1)
 
 p8 = StackingCVRegressor(
-    regressors=[p1, p2, p3, p4, p5, p7],
+    regressors=[p11, p12, p13, p21, p22, p23],
     meta_regressor=lassoCV, cv=5)
-
-p9 = AveragingRegressor((p1, p2, p3, p4, p5, p6, p7))
-
-pipe = AveragingRegressor((p8, p9))
 
 pipe = p8
 
@@ -555,42 +592,18 @@ if mode == 'Val':
 elif mode == 'Grid':
 
     params = {
-        'lgbmregressor__max_depth': [2, 5, 7],
-        'lgbmregressor__n_estimators': [700, 1000, 1300],
-        # 'learning_rate': [0.004, 0.007, 0.01]
+        'meta-lgbmregressor__max_depth': [2, 3, 5],
+        'meta-lgbmregressor__n_estimators': [100, 300, 500],
+        'meta-lgbmregressor__learning_rate': [0.003]
     }
 
     grid = GridSearchCV(
         pipe,
         param_grid=params,
-        n_jobs=1, verbose=2, scoring='r2', cv=5)
+        n_jobs=4, verbose=2, scoring='r2', cv=5)
 
     grid.fit(train_df, y_train)
-
-elif mode == 'Stacking':
-    # x_train, x_valid, y_train, y_valid =\
-    #     train_test_split(train_df, y_train, test_size=0.2)
-
-    x_train = pipe.fit_transform(train_df, y_train)
-    x_test = pipe.transform(test_df)
-
-    # for clf, label in zip(
-    #     [clf1, clf2, clf3, clf4, clf5, clf6, clf7], [
-    #         'RF', 'GradientBoosting', 'Bagging', 'ExtraTrees',
-    #         'Ridge', 'XGBoost', 'MLP']):
-    #             clf.fit(x_train, y_train)
-    #             print("{}: {:06.4f}".format(
-    #                 label, r2_score(y_valid, clf.predict(x_valid))))
-
-    # # custom method
-    # ens = BlendingRegressor(
-    #     [clf1, clf2, clf3, clf4, clf5, clf6, clf7, clf8, clf9, clf10],
-    #     verbose=1)
-    # x_tr2 = ens.fit_transform(x_train, y_train)
-    # x_vl2 = ens.transform(x_valid)
-
-    np.savetxt("../input/full_fpipe01_train.csv", x_train, delimiter=",")
-    np.savetxt("../input/full_fpipe01_test.csv", x_test, delimiter=",")
+    print(grid.best_params_)
 
 elif mode == 'Submit':
     pipe.fit(train_df, y_train)
@@ -599,6 +612,7 @@ elif mode == 'Submit':
     preds = pd.DataFrame()
     preds['ID'] = test_df['ID']
     preds['y'] = np.expm1(predictions)
+    # preds['y'] = predictions
 
     # mix-in real test
     if True:
@@ -607,4 +621,4 @@ elif mode == 'Submit':
         preds.loc[lb.ID.values, "y"] = lb["y"].values
         preds.reset_index(inplace=True)
 
-    create_submission(0.6257, preds, None)
+    create_submission(0.6205, preds, None)

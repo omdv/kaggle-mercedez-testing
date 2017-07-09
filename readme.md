@@ -50,6 +50,16 @@ R^2 Score: 0.6244 (+/- 0.041) - p8 with 39 of public LB (new benchmark)
 R^2 Score: 0.6265 (+/- 0.043) - p8 with 42 of public LB (new benchmark)
 R^2 Score: 0.6247 (+/- 0.043) - p8 with 47 leaks (two are tainted?)
 R^2 Score: 0.6257 (+/- 0.042) - p8 with 47 leaks (fixed ID 105)
+R^2 Score: 0.6235 (+/- 0.042) - added mean by X0 (REMOVE)
+R^2 Score: 0.6216 (+/- 0.038) - lgbr without mean by cat (benchmark for feature search)
+R^2 Score: 0.6203 (+/- 0.037) - added mean by X0
+R^2 Score: 0.6201 (+/- 0.037) - with median by X0
+R^2 Score: 0.6236 (+/- 0.042) - p8 without probe (benchmark)
+R^2 Score: 0.6204 (+/- 0.041) - p1 without probe (benchmark)
+R^2 Score: 0.6172 (+/- 0.041) - p8 with p31
+R^2 Score: 0.6148 (+/- 0.042) - p8 without p31
+R^2 Score: 0.6236 (+/- 0.042) - p8 without p31 (removed int32 from all)
+R^2 Score: 0.6205 (+/- 0.037) - same as above but trained with probes
 
 ### Ideas:
 - Mean of y across binary - encoding?
@@ -66,8 +76,7 @@ R^2 Score: -11923.5885 (+/- 21770.111) [<class 'sklearn.neural_network.multilaye
 
 
 ### Probing
-(140726.14692 * (-59.19107 + 59.28220) + 10000.) / 200
-105 or 110 is tainted
+(140726.14692 * (-59.1910 + 59.28220) + 10000.) / 200
 21 - OUT
 77 - IN
 84 - OUT
@@ -78,18 +87,43 @@ R^2 Score: -11923.5885 (+/- 21770.111) [<class 'sklearn.neural_network.multilaye
 132 - OUT
 135 - OUT
 137 - OUT
+247 - OUT
 251 - OUT
+304 - OUT
+305 - OUT
+311 - OUT
 343 - OUT
 345 - IN
 346 - OUT
 347 - OUT
+498 - OUT
+624 - OUT
 1441 - OUT
 2128 - OUT
 2132 - OUT
 2135 - IN
+2435 - OUT
 2909 - OUT
+2914 - OUT
+3500 - IN
+3501 - OUT
+3504 - OUT
 3617 - OUT
-
+3913 - IN
+4048 - OUT
+5816 - OUT
+6089 - OUT
+6585 - OUT
+6829 - OUT
+7420 - OUT
+8011 - OUT
+8013 - OUT
+8015 - OUT
+8017 - IN
+8019 - OUT
+8023 - IN
+8024 - OUT
+8026 - IN
 
 ## List of pipelines with models
 ### Pipe 1
