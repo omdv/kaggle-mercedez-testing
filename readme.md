@@ -61,10 +61,6 @@ R^2 Score: 0.6148 (+/- 0.042) - p8 without p31
 R^2 Score: 0.6236 (+/- 0.042) - p8 without p31 (removed int32 from all)
 R^2 Score: 0.6205 (+/- 0.037) - same as above but trained with probes
 
-### Ideas:
-- Mean of y across binary - encoding?
-- Encode categorical
-
 ### Screening regressors (5 or 10 folds)
 R^2 Score: 0.6192 (+/- 0.040) [<class 'xgboost.sklearn.XGBRegressor'>]
 R^2 Score: 0.6176 (+/- 0.041) [<class 'lightgbm.sklearn.LGBMRegressor'>]
@@ -73,57 +69,6 @@ R^2 Score: 0.0339 (+/- 0.010) [<class 'sklearn.neighbors.regression.KNeighborsRe
 R^2 Score: -9.0570 (+/- 11.617) [<class 'sklearn.linear_model.huber.HuberRegressor'>]
 R^2 Score: -11.0515 (+/- 18.835) [<class 'sklearn.linear_model.ridge.Ridge'>]
 R^2 Score: -11923.5885 (+/- 21770.111) [<class 'sklearn.neural_network.multilayer_perceptron.MLPRegressor'>]
-
-
-### Probing
-(140726.14692 * (-59.1910 + 59.28220) + 10000.) / 200
-21 - OUT
-77 - IN
-84 - OUT
-117 - IN
-120 - IN
-123 - OUT
-126 - OUT
-132 - OUT
-135 - OUT
-137 - OUT
-247 - OUT
-251 - OUT
-304 - OUT
-305 - OUT
-311 - OUT
-343 - OUT
-345 - IN
-346 - OUT
-347 - OUT
-498 - OUT
-624 - OUT
-1441 - OUT
-2128 - OUT
-2132 - OUT
-2135 - IN
-2435 - OUT
-2909 - OUT
-2914 - OUT
-3500 - IN
-3501 - OUT
-3504 - OUT
-3617 - OUT
-3913 - IN
-4048 - OUT
-5816 - OUT
-6089 - OUT
-6585 - OUT
-6829 - OUT
-7420 - OUT
-8011 - OUT
-8013 - OUT
-8015 - OUT
-8017 - IN
-8019 - OUT
-8023 - IN
-8024 - OUT
-8026 - IN
 
 ## List of pipelines with models
 ### Pipe 1
